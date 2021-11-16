@@ -1,0 +1,101 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+$common_script = <<SCRIPT
+echo "Installing dependencies ..."
+sudo apt-get update
+sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl lsb-release unzip curl jq dnsutils
+curl -sL 'https://deb.dl.getenvoy.io/public/gpg.8115BA8E629CC074.key' | sudo gpg --dearmor -o /usr/share/keyrings/getenvoy-keyring.gpg
+echo a077cb587a1b622e03aa4bf2f3689de14658a9497a9af2c427bba5f4cc3c4723 /usr/share/keyrings/getenvoy-keyring.gpg | sha256sum --check
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/getenvoy-keyring.gpg] https://deb.dl.getenvoy.io/public/deb/debian $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/getenvoy.list
+sudo apt-get update
+sudo apt-get install -y getenvoy-envoy
+
+echo "Determining Consul version to install ..."
+CHECKPOINT_URL="https://checkpoint-api.hashicorp.com/v1/check"
+if [ -z "$CONSUL_VERSION" ]; then
+    CONSUL_VERSION=$(curl -s "${CHECKPOINT_URL}"/consul | jq .current_version | tr -d '"')
+fi
+echo "Fetching Consul version ${CONSUL_VERSION} ..."
+cd /tmp/
+curl -s https://releases.hashicorp.com/consul/${CONSUL_VERSION}/consul_${CONSUL_VERSION}_linux_amd64.zip -o consul.zip
+echo "Installing Consul version ${CONSUL_VERSION} ..."
+unzip consul.zip
+sudo chmod +x consul
+sudo mv consul /usr/bin/consul
+sudo chown vagrant:vagrant /usr/bin/consul
+sudo mkdir /etc/consul.d || true
+sudo chmod a+w /etc/consul.d
+
+sudo mkdir /etc/ca-certificates/consul || true
+sudo chmod a+w /etc/ca-certificates/consul
+sudo mkdir /opt/consul || true
+SCRIPT
+
+# provisioning script for services VM in both DCs. This installs both test
+# services so that, depending on the test scenario, requests can origininate
+# in either the primary or the secondary.
+$install_services_script = <<SCRIPT
+echo "Fetching Dashboard service binary"
+cd /tmp/
+curl -Ls -o dashboard-service.zip https://github.com/hashicorp/demo-consul-101/releases/download/0.0.3.1/dashboard-service_linux_amd64.zip
+unzip dashboard-service.zip
+sudo chmod +x dashboard-service_linux_amd64
+sudo mv dashboard-service_linux_amd64 /usr/bin/dashboard-service
+
+echo "Fetching Counting service binary"
+cd /tmp/
+curl -Ls -o counting-service.zip https://github.com/hashicorp/demo-consul-101/releases/download/0.0.3.1/counting-service_linux_amd64.zip
+unzip counting-service.zip
+sudo chmod +x counting-service_linux_amd64
+sudo mv counting-service_linux_amd64 /usr/bin/counting-service
+SCRIPT
+
+# Specify a Consul version
+CONSUL_VERSION = ENV['CONSUL_VERSION']
+
+# Specify a custom Vagrant box for the demo
+BOX_NAME = ENV['BOX_NAME'] || "debian/stretch64"
+
+# Vagrantfile API/syntax version.
+# NB: Don't touch unless you know what you're doing!
+VAGRANTFILE_API_VERSION = "2"
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  config.vm.box = BOX_NAME
+
+  config.vm.provision "shell", inline: $common_script
+
+  config.vm.define "primary-server" do |n|
+      n.vm.hostname = "primary-server"
+      n.vm.network "private_network", ip: "172.20.20.10"
+  end
+
+  config.vm.define "primary-gateway" do |n|
+      n.vm.hostname = "primary-gateway"
+      n.vm.network "private_network", ip: "172.20.20.11"
+  end
+
+  config.vm.define "primary-services" do |n|
+      n.vm.hostname = "primary-services"
+      n.vm.network "private_network", ip: "172.20.20.12"
+      n.vm.provision "shell", inline: $install_services_script
+  end
+
+  config.vm.define "secondary-server" do |n|
+      n.vm.hostname = "secondary-server"
+      n.vm.network "private_network", ip: "172.20.20.20"
+  end
+
+  config.vm.define "secondary-gateway" do |n|
+      n.vm.hostname = "secondary-gateway"
+      n.vm.network "private_network", ip: "172.20.20.21"
+  end
+
+  config.vm.define "secondary-services" do |n|
+      n.vm.hostname = "secondary-services"
+      n.vm.network "private_network", ip: "172.20.20.22"
+      n.vm.provision "shell", inline: $install_services_script
+  end
+
+end

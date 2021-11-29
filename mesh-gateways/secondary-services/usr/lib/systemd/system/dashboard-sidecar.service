@@ -1,0 +1,18 @@
+[Unit]
+Description="Envoy sidecar for Dashboard service (for demo purposes)"
+Documentation=https://github.com/hashicorp/demo-consul-101
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=consul
+Group=consul
+ExecStart=/usr/bin/consul connect envoy -sidecar-for dashboard -- -l trace
+ExecReload=/bin/kill --signal HUP $MAINPID
+KillMode=process
+KillSignal=SIGTERM
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

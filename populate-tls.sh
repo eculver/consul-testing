@@ -55,23 +55,8 @@ function main {
     $CONSUL_BIN tls ca create
   fi
 
-  primary_servers=(
-    primary-server
-  )
-  primary_clients=(
-    primary-mgateway
-    primary-services
-  )
-  secondary_servers=(
-    secondary-server
-  )
-  secondary_clients=(
-    secondary-mgateway
-    secondary-tgateway
-  )
-
-  # generate primary server certs
-  for s in ${primary_servers[@]}; do
+  # generate server certs
+  for s in $(_server_vm_names "${group}"); do
     cert_file="${s}${CERT_FILE_SUFFIX}"
     key_file="${s}${KEY_FILE_SUFFIX}"
     if [ ! -f "${group}/${s}/${VM_CA_ROOT}/${cert_file}" ]; then
@@ -79,28 +64,7 @@ function main {
       $CONSUL_BIN tls cert create \
         -server \
         -node "${s}" \
-        -dc $PRIMARY_DC \
-        -ca $CA_FILE \
-        -key $CA_KEY_FILE
-      # populate server cert files
-      cert_file="${s}${CERT_FILE_SUFFIX}"
-      key_file="${s}${KEY_FILE_SUFFIX}"
-      mkdir -p "${group}/${s}/${VM_CA_ROOT}"
-      mv ${cert_file} "${group}/${s}/${VM_CA_ROOT}"
-      mv ${key_file} "${group}/${s}/${VM_CA_ROOT}"
-    fi
-  done
-
-  # generate secondary server certs
-  for s in ${secondary_servers[@]}; do
-    cert_file="${s}${CERT_FILE_SUFFIX}"
-    key_file="${s}${KEY_FILE_SUFFIX}"
-    if [ ! -f "${group}/${s}/${VM_CA_ROOT}/${cert_file}" ]; then
-      echo "generating server cert for $s"
-      $CONSUL_BIN tls cert create \
-        -server \
-        -node "${s}" \
-        -dc $SECONDARY_DC \
+        -dc $(cut -d '-' -f1 <<< "${s}") \
         -ca $CA_FILE \
         -key $CA_KEY_FILE
       # populate server cert files
@@ -113,8 +77,7 @@ function main {
   done
 
   # populate root CA everywhere
-  all_vms=( "${primary_servers[@]}" "${primary_clients[@]}" "${secondary_servers[@]}" "${secondary_clients[@]}" )
-  for vm in ${all_vms[@]}; do
+  for vm in $(_vm_names "${group}"); do
     mkdir -p "${group}/${vm}/${VM_CA_ROOT}"
     cp $CA_FILE "${group}/${vm}${VM_CA_ROOT}"
     cp $CA_KEY_FILE "${group}/${vm}${VM_CA_ROOT}"

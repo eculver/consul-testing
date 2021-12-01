@@ -29,10 +29,6 @@ function _client_vm_names {
   _vm_names "${group}" | grep -v server
 }
 
-# extracts all servers in primary DC
-
-# extracts all 
-
 # reloads systemd units on all VMs in the group
 function vm_systemd_daemon_reload {
   local group="${1:-}"

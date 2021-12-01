@@ -57,6 +57,7 @@ sudo chown consul:consul /usr/bin/dashboard-service
 
 echo "Enabling Dashboard service"
 sudo systemctl enable dashboard
+sudo systemctl enable dashboard-sidecar
 
 echo "Fetching Counting service binary"
 cd /tmp/
@@ -68,6 +69,7 @@ sudo chown consul:consul /usr/bin/counting-service
 
 echo "Enabling Counting service"
 sudo systemctl enable counting
+sudo systemctl enable counting-sidecar
 SCRIPT
 
 # Specify a Consul version

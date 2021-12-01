@@ -2,116 +2,131 @@
 
 VM-based service mesh with multiple datacenters federated via Mesh Gateways.
 
-This is still a WIP so it could use a lot more refinement
+This is still a WIP; it can use a lot more refinement
 
 ##_TODO_ 
 
-- refactor to use systemd units
-- populate systemd units at provisioning step
-- make it easier to install a dev version of consul
-- add troubleshooting guide
+- DRY: separate fixtures
+- Add tool for composing fixtures into 
+
 
 ## Setup
 
+### CA Files
+The clusters must first have the CA data populated. From repository root run:
+```
+./populate-tls.sh mesh-gateways
+```
+This generates a new root CA and places the files in a path that the VMs will
+be provisioned with (`/etc/ca-certificates/consul`). It then generates certificates
+for all servers and copies them to the right paths.
+
+### Enterprise License
+
+When using Consul Enterprise, the license needs to be populated. From the repository
+root, run:
+
+```
+./populate-license.sh mesh-gateways /path/to/license.txt
+```
+This will copy the license from `/path/to/license.txt` to a path that Vagrant
+will then sync to the VMs when provisioning (`/etc/consul.d/license.hclic`). This
+path is then referenced in the systemd unit's `EnvironmentFile` to set
+`CONSUL_LICENSE_PATH` when the agent is started.
+
+### Consul Version
+
+By default, the VMs will download the latest version of Consul. The version can
+be explicitly set using the `CONSUL_VERSION` environment variable:
+
+```
+CONSUL_VERSION=1.11.0+ent-beta3 vagrant up
+```
+
+### Start VMs
+
+Once the CA data and (optionally) license is populated, the cluster can be
+provisioned by running Vagrant:
+
 ```
 vagrant up
-./populate-tls.sh
-./upload.sh
 ```
 
-All VMs should be configured at this point. Everything just needs to be started
-and then services registered with Consul for everything to come to life.
+All VMs should be provisioned and running at this point. Consul clients, servers and 
+mesh gateways will all be started and mesh federation should be enabled. This
+can be verified by logging into the servers and checking:
 
-## Run everything in a million terminal windows
-Until this is reconfigured to use systemd or proper startup scripts, this is
-going to involve a lot of terminals so buckle up:
-
-### 1. Start the server on primary DC server VM:
 ```
 vagrant ssh primary-server
-sudo ./run-primary-server.sh
+consul members -wan
 ```
 
-### 2. Start the agent on the primary DC gateway VM:
-```
-vagrant ssh primary-gateway
-sudo ./run-primary-gateway-agent.sh
-```
+From here, services just need to be registered and started to verify the
+end-to-end flows. Details are below.
 
-### 3. Start Envoy on the primary DC gateway VM:
-```
-vagrant ssh primary-gateway
-sudo ./run-primary-gateway-envoy.sh
-```
-
-### 4. Start the server on the secondary DC server VM:
-```
-vagrant ssh secondary-server
-sudo ./run-secondary-server.sh
-```
-
-### 5. Start the agent on the secondary DC gateway VM:
-```
-vagrant ssh primary-gateway
-sudo ./run-primary-gateway-envoy.sh
-```
-
-### 6. Start Envoy on the secondary DC gateway VM:
-```
-vagrant ssh primary-gateway
-sudo ./run-primary-gateway-envoy.sh
-```
-
-At this point the cluster and mesh federation should be set up.
+## Running Services
 
 Try running some services that communicate across DCs. This will consist of
-running the counting service in the secondary DC that backs a dashboard service
-running in the primary DC. Each will run on a separate VM and communicate
-through a local Envoy sidecar.
+running the counting service in one DC and a dashboard service in the other. All
+of the accompanying configs are populated when the services VMs are provisioned so
+it's just a matter of registering them and starting them and their sidecars.
 
-### 7. Start the consul client on the primary DC services VM:
-```
-vagrant ssh primary-services
-sudo ./run-primary-services-agent.sh
-```
+Configuration for the services is located in `/etc/demo` on both the `primary-services`
+and `secondary-services` VMs.
 
-### 8. Start the consul client on the secondary DC services VM:
+### Configure Requests from Primary to Secondary
+
+To run the dashboard in the primary and the counting service in the secondary,
+do the following:
+
+
+1. Setup counting service in secondary
 ```
 vagrant ssh secondary-services
-sudo ./run-secondary-services-agent.sh
+consul services register /etc/demo/counting-service-config.hcl
+sudo systemctl enable counting-sidecar
+sudo systemctl start counting-sidecar
+sudo systemctl start counting
 ```
 
-### 9. Register the counting service and start its sidecar on the secondary DC services VM:
-```
-vagrant ssh secondary-services
-./run-secondary-services-envoy.sh
-```
-
-### 10. Start the counting service on the secondary DC services VM:
-```
-vagrant ssh secondary-services
-PORT=9003 counting-service
-```
-
-### 11. Register the dashboard service and start its sidecar on the primary DC services VM:
+2. Setup dashboard in the primary
 ```
 vagrant ssh primary-services
-./run-primary-services-envoy.sh
-```
-
-### 12. Start the dashboard service on the primary DC services VM:
-```
-vagrant ssh primary-services
-PORT=9002 COUNTING_SERVICE_URL="http://localhost:5000" dashboard-service
+consul services register /etc/demo/dashboard-service-config-primary.hcl
+sudo systemctl enable dashboard-sidecar
+sudo systemctl start dashboard-sidecar
+sudo systemctl start dashboard 
 ```
 
 If everything is working, you should be able to navigate to the dashboard UI
 at: http://172.20.20.12:9002
 
-If it's not working, then go to https://flights.google.com, book a flight to
-Nepal and then immediately throw your computer in the trash and head to the
-airport because you have failed as a human being and you need to reconsider the
-meaning of life as a monk in Nepal.
+### Configure Requests from Primary to Secondary
+
+To run the dashboard in the secondary and the counting service in the primary,
+do the following:
+
+1. Setup counting service in primary
+```
+vagrant ssh primary-services
+consul services register /etc/demo/counting-service-config.hcl
+sudo systemctl enable counting-sidecar
+sudo systemctl start counting-sidecar
+sudo systemctl start counting
+```
+
+2. Setup dashboard in the secondary
+```
+vagrant ssh secondary-services
+consul services register /etc/demo/dashboard-service-config-primary.hcl
+sudo systemctl enable dashboard-sidecar
+sudo systemctl start dashboard-sidecar
+sudo systemctl start dashboard 
+```
+
+If everything is working, you should be able to navigate to the dashboard UI
+at: http://172.20.20.12:9002
+
 
 ## Troubleshooting
 

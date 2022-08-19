@@ -1,0 +1,16 @@
+version: 1
+primary_datacenter: dc1
+datacenters:
+  - name: dc1
+    servers:
+      - server1
+    clients:
+      - gateway1
+      - services1
+  - name: dc2
+    servers:
+      - server1
+    clients:
+      - mgateway1
+      - tgateway1
+      - services1

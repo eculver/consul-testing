@@ -1,0 +1,20 @@
+[Unit]
+Description="HashiCorp Consul - Mesh Gateway"
+Documentation=https://www.consul.io/
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=consul
+Group=consul
+EnvironmentFile=/etc/consul.d/consul.env
+ExecStart=/usr/bin/consul connect envoy -register -gateway=mesh -service=primary-mesh-gateway -address=172.20.20.11:9000 -wan-address=172.20.20.11:9000 -expose-servers -- -l trace
+ExecReload=/bin/kill --signal HUP $MAINPID
+KillMode=process
+KillSignal=SIGTERM
+Restart=on-failure
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

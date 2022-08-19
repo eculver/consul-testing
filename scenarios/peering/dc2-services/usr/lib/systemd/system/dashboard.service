@@ -1,0 +1,19 @@
+[Unit]
+Description="Dashboard service - Dashboard for displaying output of the counting service (for demo purposes)"
+Documentation=https://github.com/hashicorp/demo-consul-101
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=consul
+Group=consul
+EnvironmentFile=/etc/demo/dashboard-service.env
+ExecStart=/usr/bin/dashboard-service
+ExecReload=/bin/kill --signal HUP $MAINPID
+KillMode=process
+KillSignal=SIGTERM
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
